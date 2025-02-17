@@ -1,61 +1,65 @@
-const express = require("express"); 
-const fs = require("fs"); 
-const bodyParser = require("body-parser"); 
-const path = require("path"); 
- 
+const fs = require('fs'); 
 const app = express(); 
 const PORT = 3000; 
-const TASKS_FILE = "tasks.json"; 
+const TASKS_FILE = 'tasks.json'; 
  
-app.use(bodyParser.json()); 
+app.use(express.json()); 
  
-// Serve static files from the 'public' folder 
-app.use(express.static(path.join(__dirname, "public"))); 
- 
-// Serve the home page 
-app.get("/", (req, res) => { 
-    res.sendFile(path.join(__dirname, "public", "index.html")); 
-}); 
- 
-// Helper functions 
-const readTasks = () => { 
+const loadTasks = () => { 
     try { 
- 
-        const data = fs.readFileSync(TASKS_FILE); 
-        return JSON.parse(data); 
+        return JSON.parse(fs.readFileSync(TASKS_FILE)); 
     } catch (error) { 
         return []; 
     } 
 }; 
  
-const writeTasks = (tasks) => { 
+const saveTasks = (tasks) => { 
     fs.writeFileSync(TASKS_FILE, JSON.stringify(tasks, null, 2)); 
 }; 
  
-// CRUD API Routes 
-app.get("/tasks", (req, res) => res.json(readTasks())); 
- 
-app.post("/tasks", (req, res) => { 
+const validateTask = (req, res, next) => { 
     const { title, status } = req.body; 
-    const tasks = readTasks(); 
-    const newTask = { id: tasks.length + 1, title, status: status || 
-"pending" }; 
+    if (!title || typeof title !== 'string') { 
+        return res.status(400).json({ error: "Title is required and must be a string." }); 
+    } 
+    if (status && !['pending', 'completed'].includes(status)) { 
+ 
+        return res.status(400).json({ error: "Invalid status. Use 'pending' or 'completed'." }); 
+    } 
+    next(); 
+}; 
+ 
+app.post('/tasks', validateTask, (req, res) => { 
+    const tasks = loadTasks(); 
+    const newTask = { id: tasks.length + 1, ...req.body }; 
     tasks.push(newTask); 
-    writeTasks(tasks); 
+    saveTasks(tasks); 
     res.status(201).json(newTask); 
 }); 
  
-app.put("/tasks/:id", (req, res) => { 
-    const { id } = req.params; 
-    const { title, status } = req.body; 
-    const tasks = readTasks(); 
-    const taskIndex = tasks.findIndex((t) => t.id === parseInt(id)); 
+app.get('/tasks', (req, res) => { 
+    res.json(loadTasks()); 
+}); 
  
-if (taskIndex === -1) return res.status(404).json({ error: "Task not found" }); 
+app.put('/tasks/:id', validateTask, (req, res) => { 
+    const tasks = loadTasks(); 
+    const taskIndex = tasks.findIndex(task => task.id == req.params.id); 
+    if (taskIndex === -1) return res.status(404).json({ error: "Task not found" }); 
  
-    if (title) tasks[taskIndex].title = title; 
-    if (status) tasks[taskIndex].status = status; 
- 
-    writeTasks(tasks); 
+    tasks[taskIndex] = { ...tasks[taskIndex], ...req.body }; 
+    saveTasks(tasks); 
     res.json(tasks[taskIndex]); 
-});
+}); 
+ 
+app.delete('/tasks/:id', (req, res) => { 
+    let tasks = loadTasks(); 
+    const newTasks = tasks.filter(task => task.id != req.params.id); 
+    if (tasks.length === newTasks.length) return res.status(404).json({ error: 
+"Task not found" }); 
+ 
+    saveTasks(newTasks); 
+    res.json({ message: "Task deleted successfully" }); 
+}); 
+ 
+app.listen(PORT, () =>  console.log(`Server running on 
+http://localhost:${PORT}`));
